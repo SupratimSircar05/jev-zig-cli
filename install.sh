@@ -332,7 +332,9 @@ extract_dir=$temp_dir/extracted
 mkdir "$extract_dir" || die "could not create extraction directory"
 tar -xzf "$archive_path" -C "$extract_dir" || die "could not extract $archive_name"
 extracted_root=$extract_dir/$archive_root
-[ -d "$extracted_root" ] && [ ! -L "$extracted_root" ] || die "release root is not a regular directory"
+if [ ! -d "$extracted_root" ] || [ -L "$extracted_root" ]; then
+    die "release root is not a regular directory"
+fi
 
 for executable in jevx jev-decide; do
     executable_path=$extracted_root/bin/$executable
@@ -340,15 +342,21 @@ for executable in jevx jev-decide; do
     [ ! -L "$executable_path" ] || die "release bin/$executable must not be a symbolic link"
     chmod u+x "$executable_path" || die "could not mark bin/$executable executable"
 done
-[ -d "$extracted_root/vendor/codex" ] && [ ! -L "$extracted_root/vendor/codex" ] || die "release is missing the bundled Codex runtime"
-[ -x "$extracted_root/vendor/codex/bin/codex" ] && [ ! -L "$extracted_root/vendor/codex/bin/codex" ] || die "release is missing the bundled Codex executable"
+if [ ! -d "$extracted_root/vendor/codex" ] || [ -L "$extracted_root/vendor/codex" ]; then
+    die "release is missing the bundled Codex runtime"
+fi
+if [ ! -x "$extracted_root/vendor/codex/bin/codex" ] || [ -L "$extracted_root/vendor/codex/bin/codex" ]; then
+    die "release is missing the bundled Codex executable"
+fi
 [ -f "$extracted_root/LICENSE" ] || die "release is missing LICENSE"
 [ -f "$extracted_root/THIRD_PARTY_NOTICES.md" ] || die "release is missing THIRD_PARTY_NOTICES.md"
 
 release_id=$version-$platform-$expected_checksum
 release_dir=$releases_dir/$release_id
 if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
-    [ -d "$release_dir" ] && [ ! -L "$release_dir" ] || die "existing release path is not a directory: $release_dir"
+    if [ ! -d "$release_dir" ] || [ -L "$release_dir" ]; then
+        die "existing release path is not a directory: $release_dir"
+    fi
     if find "$release_dir" ! -type d ! -type f -print -quit | grep -q .; then
         die "existing release contains a link or special file: $release_dir"
     fi
