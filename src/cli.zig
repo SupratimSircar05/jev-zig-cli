@@ -9,6 +9,7 @@ pub const Command = union(enum) {
     run,
     resume_: []const u8,
     decide,
+    web,
     doctor,
     policy_explain,
     audit: AuditAction,
@@ -102,6 +103,8 @@ pub fn parse(args: []const []const u8) ParseError!Invocation {
                 result.command = .{ .resume_ = args[i] };
             } else if (std.mem.eql(u8, arg, "decide")) {
                 result.command = .decide;
+            } else if (std.mem.eql(u8, arg, "web")) {
+                result.command = .web;
             } else if (std.mem.eql(u8, arg, "doctor")) {
                 result.command = .doctor;
             } else if (std.mem.eql(u8, arg, "setup")) {
@@ -163,4 +166,10 @@ test "does not accept a prompt as a positional argv value" {
 test "parses audit actions" {
     const invocation = try parse(&.{ "jevx", "audit", "verify" });
     try std.testing.expectEqual(AuditAction.verify, invocation.command.audit);
+}
+
+test "parses local browser bridge" {
+    const invocation = try parse(&.{ "jevx", "web", "--policy", "conservative" });
+    try std.testing.expect(invocation.command == .web);
+    try std.testing.expectEqual(PolicyName.conservative, invocation.options.policy);
 }

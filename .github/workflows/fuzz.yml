@@ -1,0 +1,41 @@
+name: Fuzzing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - build.zig
+      - build.zig.zon
+      - src/**
+      - tests/**
+      - .github/workflows/fuzz.yml
+  schedule:
+    - cron: '43 2 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-zig-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      FUZZ_ITERATIONS: ${{ github.event_name == 'schedule' && '1M' || '10K' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - name: Run native Zig fuzz targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig build test -Doptimize=ReleaseSafe -j4 --fuzz="$FUZZ_ITERATIONS"

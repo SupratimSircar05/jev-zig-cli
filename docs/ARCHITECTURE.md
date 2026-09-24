@@ -63,3 +63,17 @@ The alpha Decisions endpoint and `/api/v1/systemone` are explicit adapters.
 They never silently fail over. Request and response validators enforce bounded
 sizes, the three supported question types, Choice and Score limits, finite
 values, and tolerant optional metadata.
+
+## Browser companion
+
+The GitHub Pages site is static and contains no provider credential. Its
+playground is an explicitly labeled deterministic demo unless a user starts
+`jevx web` locally. The bridge binds exclusively to IPv4 loopback, preferring
+`127.0.0.1:4768` and falling back to an ephemeral port for safe restart. It validates the
+`Host` header, restricts CORS to the project Pages origin and loopback
+development origins, requires a random per-launch pairing token, rejects
+chunked or oversized requests, and returns typed preflight decisions only. It
+does not expose Codex execution, files, audit records, configuration, or
+provider credentials over HTTP. A real Jev call still runs inside the local
+`jevx` process through the normal credential and validation path, after local
+redaction; the exact workspace path is withheld from the provider.

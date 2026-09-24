@@ -5,8 +5,7 @@ on:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   native:
@@ -20,6 +19,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
@@ -52,6 +53,8 @@ jobs:
           - x86_64-windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
@@ -63,6 +66,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
@@ -74,11 +79,14 @@ jobs:
           zig build test -Doptimize=ReleaseSafe -j4 --fuzz=1K
 
   repository-hygiene:
+    name: CI / Repository hygiene
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Reject credential-shaped material
         shell: bash
         run: |
@@ -91,3 +99,43 @@ jobs:
         run: |
           unexpected=$(find src tests scripts -type f 2>/dev/null | grep -Ev '\.(zig|json|jsonl|md)$' || true)
           test -z "$unexpected" || { echo "$unexpected"; exit 1; }
+      - name: Validate installer and Pages source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n install.sh
+          shellcheck install.sh
+          for required in index.html 404.html app.js styles.css favicon.svg; do
+            test -s "site/$required"
+          done
+          node --check site/app.js
+          if find site -type l -print -quit | grep -q .; then
+            echo 'site must not contain symbolic links' >&2
+            exit 1
+          fi
+          if find site -type f -links +1 -print -quit | grep -q .; then
+            echo 'site must not contain hard links' >&2
+            exit 1
+          fi
+          git diff --check
+
+  required:
+    name: CI / Required
+    if: always()
+    needs: [native, cross-compile, parser-fuzz, repository-hygiene]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every CI job to pass
+        shell: bash
+        env:
+          NATIVE_RESULT: ${{ needs.native.result }}
+          CROSS_COMPILE_RESULT: ${{ needs.cross-compile.result }}
+          PARSER_FUZZ_RESULT: ${{ needs.parser-fuzz.result }}
+          REPOSITORY_HYGIENE_RESULT: ${{ needs.repository-hygiene.result }}
+        run: |
+          set -euo pipefail
+          test "$NATIVE_RESULT" = success
+          test "$CROSS_COMPILE_RESULT" = success
+          test "$PARSER_FUZZ_RESULT" = success
+          test "$REPOSITORY_HYGIENE_RESULT" = success

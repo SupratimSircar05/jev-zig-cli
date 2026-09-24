@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const EventType = enum {
     session_started,
+    service_ready,
     policy_result,
     backend_event,
     decision,

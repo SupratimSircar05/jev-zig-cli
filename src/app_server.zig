@@ -61,7 +61,7 @@ pub const Request = struct {
     sandbox: Sandbox = .read_only,
     client_name: []const u8 = "jev-zig-cli",
     client_title: []const u8 = "Jev Zig CLI",
-    client_version: []const u8 = "0.1.0",
+    client_version: []const u8 = "1.0.0",
     limits: process_runner.Limits = .{},
     approvals: ApprovalHandler = .{},
 };

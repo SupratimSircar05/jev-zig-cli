@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="jevx is an unofficial, auditable Zig terminal agent that pairs Codex with Jev typed decisions and deterministic policy.">
+  <meta name="theme-color" content="#081411">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>jevx — Typed decisions for Codex</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" data-header>
+    <a class="brand" href="#top" aria-label="jevx home">
+      <span class="brand-mark" aria-hidden="true">j<span>&gt;</span></span>
+      <span>jevx</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#playground">Playground</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#safety">Safeguards</a>
+      <a href="#commands">Commands</a>
+      <a class="nav-github" href="https://github.com/SupratimSircar05/jev-zig-cli">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="eyebrow"><span></span> Open source · MIT · Built in Zig</div>
+      <h1 id="hero-title">A typed decision layer<br>for <em>Codex</em>.</h1>
+      <p class="hero-copy">
+        <strong>jevx</strong> pairs Codex’s generative coding with Jev’s bounded
+        <code>choice</code>, <code>noul</code>, and <code>score</code> judgments—then keeps
+        final control in deterministic policy you can inspect.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#install">Install jevx</a>
+        <a class="button button-quiet" href="#playground">Try the playground</a>
+      </div>
+      <p class="unofficial-note">Unofficial community project. Not endorsed by OpenAI, TypeSafe, or OpenRouter.</p>
+
+      <div class="signal-grid" aria-label="Key capabilities">
+        <article>
+          <span class="signal-number">01</span>
+          <h2>Typed routing</h2>
+          <p>Structured semantic judgments instead of free-form permission guesses.</p>
+        </article>
+        <article>
+          <span class="signal-number">02</span>
+          <h2>Deterministic gates</h2>
+          <p>Thresholds and immutable guards remain ordinary, testable Zig code.</p>
+        </article>
+        <article>
+          <span class="signal-number">03</span>
+          <h2>Encrypted evidence</h2>
+          <p>Redacted, chained audit records make terminal work easier to verify.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="install section" id="install" aria-labelledby="install-title">
+      <div class="section-label">Install</div>
+      <div class="section-heading">
+        <h2 id="install-title">One command. Guided setup.</h2>
+        <p>The installer selects the correct release, verifies its checksum, keeps bundled notices intact, and launches <code>jevx setup</code>.</p>
+      </div>
+      <div class="command-box" role="group" aria-label="Install command">
+        <code id="install-command">curl -fsSL https://raw.githubusercontent.com/SupratimSircar05/jev-zig-cli/v1.0.0/install.sh | sh</code>
+        <button class="copy-button" type="button" data-copy-target="install-command" aria-label="Copy install command">Copy</button>
+      </div>
+      <div class="platform-row">
+        <span>macOS <b>Apple Silicon</b></span>
+        <span>macOS <b>Intel</b></span>
+        <span>Linux <b>arm64</b></span>
+        <span>Linux <b>x86_64</b></span>
+        <span>Windows <b>x86_64</b></span>
+      </div>
+      <p class="install-detail">The one-line installer supports macOS and Linux, including Linux under WSL. Native Windows users should download and verify the provenance-attested x86_64 archive directly. Platform binaries are currently OS-unsigned; verify GitHub provenance and SHA-256 before use.</p>
+      <div class="inline-links">
+        <a href="https://github.com/SupratimSircar05/jev-zig-cli/releases/latest">Download the latest release <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/SupratimSircar05/jev-zig-cli/blob/main/README.md">Read the install guide <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+    <section class="playground section" id="playground" aria-labelledby="playground-title">
+      <div class="section-label">Playground</div>
+      <div class="section-heading playground-heading">
+        <div>
+          <h2 id="playground-title">See the decision boundary.</h2>
+          <p>Connect to <code>jevx web</code> on your machine for live local decisions. Without it, the terminal uses a deterministic browser simulation that never calls Jev.</p>
+        </div>
+        <div class="connection-state" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connection-badge">CHECKING LOCAL BRIDGE</span>
+        </div>
+      </div>
+
+      <div class="terminal-shell">
+        <div class="terminal-bar">
+          <div class="traffic-lights" aria-hidden="true"><span></span><span></span><span></span></div>
+          <span>jevx://decision-lab</span>
+          <button type="button" id="recheck-bridge">Check bridge</button>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-input-pane">
+            <label for="decision-prompt"><span class="prompt-mark">$</span> What should the agent do?</label>
+            <textarea id="decision-prompt" rows="5" maxlength="2000" spellcheck="true">Inspect this repository and explain how authentication is handled.</textarea>
+            <div class="pairing-row">
+              <label for="pairing-token">Live pairing token</label>
+              <input id="pairing-token" type="password" inputmode="text" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste the 32-character token from jevx web">
+            </div>
+            <div class="terminal-controls">
+              <label for="policy-select">Policy</label>
+              <select id="policy-select">
+                <option value="aggressive">aggressive</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="conservative">conservative</option>
+              </select>
+              <button class="button button-primary" type="button" id="run-decision">Evaluate</button>
+            </div>
+            <p class="privacy-note"><span aria-hidden="true">◇</span> The pairing token is an ephemeral local bridge secret, not a provider API key. It stays in this tab's memory and is cleared on exit. Live prompts go only to the loopback bridge on this device.</p>
+          </div>
+          <div class="terminal-output-pane" aria-label="Decision output">
+            <div class="output-label">
+              <span>OUTPUT</span>
+              <strong id="output-mode">DETERMINISTIC BROWSER DEMO · NOT REAL JEV</strong>
+            </div>
+            <pre id="decision-output" tabindex="0" aria-live="polite">Waiting for a decision…</pre>
+          </div>
+        </div>
+      </div>
+
+      <aside class="bridge-help" aria-labelledby="bridge-title">
+        <div aria-hidden="true">↳</div>
+        <div>
+          <h3 id="bridge-title">Want a live decision?</h3>
+          <p>After installing, run <code>jevx web</code>, then open its per-launch pairing link or paste the printed token above. The bridge binds exclusively to IPv4 loopback (normally <code>127.0.0.1:4768</code>, with an ephemeral-port fallback for safe restart). Provider credentials stay in the local jevx process. This page sends your selected prompt and requested policy only to that loopback bridge; jevx redacts the prompt before calling the configured remote Jev provider and applies the effective policy locally.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="architecture section" id="architecture" aria-labelledby="architecture-title">
+      <div class="section-label">Architecture</div>
+      <div class="section-heading">
+        <h2 id="architecture-title">Judgment is typed.<br>Authority stays in code.</h2>
+        <p>Jev does not generate code here. It supplies bounded signals. Codex performs generative work only after jevx validates the response and applies its own policy.</p>
+      </div>
+
+      <div class="flow" role="img" aria-label="Prompt flows through redaction, Jev typed preflight, deterministic policy, durable audit, Codex, and postflight verification">
+        <div class="flow-step"><span>01</span><strong>Prompt</strong><small>stdin or REPL</small></div>
+        <div class="flow-arrow" aria-hidden="true">→</div>
+        <div class="flow-step"><span>02</span><strong>Redact</strong><small>minimize context</small></div>
+        <div class="flow-arrow" aria-hidden="true">→</div>
+        <div class="flow-step flow-accent"><span>03</span><strong>Jev</strong><small>choice · noul · score</small></div>
+        <div class="flow-arrow" aria-hidden="true">→</div>
+        <div class="flow-step"><span>04</span><strong>Policy</strong><small>allow · ask · deny</small></div>
+        <div class="flow-arrow" aria-hidden="true">→</div>
+        <div class="flow-step"><span>05</span><strong>Codex</strong><small>generate and act</small></div>
+      </div>
+
+      <div class="principles-grid">
+        <article>
+          <p class="mono-kicker">CLOSED OUTPUTS</p>
+          <h3>Small semantic surface</h3>
+          <p>Only three validated decision types cross the Jev boundary. Choice lists and score ranges are bounded.</p>
+        </article>
+        <article>
+          <p class="mono-kicker">CODE OWNS CONTROL</p>
+          <h3>Inspectable permission logic</h3>
+          <p>Confidence, impact, and hazard thresholds are explicit. A model cannot waive immutable guards.</p>
+        </article>
+        <article>
+          <p class="mono-kicker">FAIL CLOSED</p>
+          <h3>Safe degradation</h3>
+          <p>If typed preflight or durable auditing fails, agent turns stop before Codex receives the prompt.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="safety section" id="safety" aria-labelledby="safety-title">
+      <div class="section-label">Safeguards</div>
+      <div class="safety-layout">
+        <div class="section-heading">
+          <h2 id="safety-title">Useful autonomy,<br>with hard edges.</h2>
+          <p>“Better” means more auditable and predictable—not smarter than the underlying model or a replacement for human judgment.</p>
+        </div>
+        <ul class="guard-list">
+          <li><span>Always ask</span><p>Pushes, releases, deployments, messages, purchases, account changes, destructive operations, privilege changes, credential access, and writes outside the workspace.</p></li>
+          <li><span>Always deny</span><p>Credential exfiltration, sandbox bypass, policy tampering, and broad destructive commands.</p></li>
+          <li><span>Never hide</span><p>Versioned JSONL events, stable exit classes, redacted encrypted audit records, and explicit degraded states.</p></li>
+          <li><span>Never loop</span><p>One batched postflight verification and at most one repair turn for a mutating task.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="commands section" id="commands" aria-labelledby="commands-title">
+      <div class="section-label">CLI</div>
+      <div class="section-heading">
+        <h2 id="commands-title">Built for humans and scripts.</h2>
+        <p>Stream in a terminal, compose through stdin, or consume stable JSONL.</p>
+      </div>
+      <div class="command-grid">
+        <article><code>jevx</code><p>Start the streaming interactive REPL.</p></article>
+        <article><code>jevx run</code><p>Run one Codex turn with the prompt on stdin.</p></article>
+        <article><code>jevx resume ID</code><p>Continue a bound Codex thread safely.</p></article>
+        <article><code>jevx decide</code><p>Submit one typed Jev request from stdin.</p></article>
+        <article><code>jevx web</code><p>Connect this site to the loopback-only typed decision bridge.</p></article>
+        <article><code>jevx doctor</code><p>Check dependencies, authentication, policy, and audit health.</p></article>
+        <article><code>jevx policy explain</code><p>Print effective thresholds and immutable guards.</p></article>
+        <article><code>jevx audit verify</code><p>Validate encrypted frames and chain integrity.</p></article>
+        <article><code>jevx --json</code><p>Emit versioned, machine-readable JSON Lines.</p></article>
+      </div>
+    </section>
+
+    <section class="closing section" aria-labelledby="closing-title">
+      <p class="mono-kicker">OPEN SOURCE · UNOFFICIAL · AUDITABLE</p>
+      <h2 id="closing-title">Put a decision boundary<br>around your coding agent.</h2>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#install">Install jevx</a>
+        <a class="button button-quiet" href="https://github.com/SupratimSircar05/jev-zig-cli">Explore the source</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">j<span>&gt;</span></span><span>jevx</span></a>
+    <p>MIT-licensed original source. Codex retains its Apache-2.0 license. Jev is a remote proprietary service and is not bundled.</p>
+    <div>
+      <a href="https://github.com/SupratimSircar05/jev-zig-cli/blob/main/SECURITY.md">Security</a>
+      <a href="https://github.com/SupratimSircar05/jev-zig-cli/blob/main/LICENSE">License</a>
+      <a href="https://github.com/SupratimSircar05/jev-zig-cli">Source</a>
+    </div>
+  </footer>
+
+  <div class="toast" id="copy-toast" role="status" aria-live="polite">Copied to clipboard</div>
+</body>
+</html>

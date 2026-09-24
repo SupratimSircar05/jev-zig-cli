@@ -14,6 +14,7 @@ const process_runner = @import("process_runner.zig");
 const redact = @import("redact.zig");
 const secret_store = @import("secret_store.zig");
 const state_paths = @import("state_paths.zig");
+const web_bridge = @import("web_bridge.zig");
 
 const max_prompt_bytes = preflight.max_prompt_bytes;
 // Postflight receives a recent evidence window while every complete redacted
@@ -24,6 +25,7 @@ const max_evidence_bytes: usize = 64 * 1024;
 // companion's largest accepted configuration (three circuit-bounded attempts,
 // including connect, request, and Retry-After time).
 const jev_process_watchdog_ms: u64 = 6 * 60 * 60 * 1000;
+const web_jev_watchdog_ms: u64 = 2 * 60 * 1000;
 
 pub fn run(init: std.process.Init, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     const allocator = init.gpa;
@@ -39,7 +41,7 @@ pub fn run(init: std.process.Init, stdout: *std.Io.Writer, stderr: *std.Io.Write
         return exit_codes.success;
     }
 
-    const workspace = canonicalWorkspace(allocator, init.io, init.environ_map, invocation.options.workspace) catch |err| {
+    const workspace = canonicalWorkspace(allocator, init.io, init.environ_map, invocation.options.workspace, commandNeedsNarrowWorkspace(invocation.command)) catch |err| {
         try stderr.print("jevx: workspace resolution failed: {s}\n", .{@errorName(err)});
         return err;
     };
@@ -91,6 +93,7 @@ pub fn run(init: std.process.Init, stdout: *std.Io.Writer, stderr: *std.Io.Write
         .doctor => runtime.doctor(),
         .setup => runtime.setup(),
         .decide => runtime.decide(),
+        .web => runtime.web(),
         .audit => |action| runtime.auditCommand(action, invocation.options.yes),
         .run => runtime.runOnce(null, invocation.options.prompt_file),
         .resume_ => |thread_id| runtime.runOnce(thread_id, invocation.options.prompt_file),
@@ -364,6 +367,106 @@ const Runtime = struct {
         try self.stdout.writeAll(response);
         try self.stdout.writeByte('\n');
         return exit_codes.success;
+    }
+
+    fn web(self: *Runtime) !u8 {
+        var pairing_bytes: [16]u8 = undefined;
+        try self.io.randomSecure(&pairing_bytes);
+        defer std.crypto.secureZero(u8, &pairing_bytes);
+        var pairing_token = std.fmt.bytesToHex(pairing_bytes, .lower);
+        defer std.crypto.secureZero(u8, &pairing_token);
+        var listener = try web_bridge.openListener(self.io, web_bridge.default_port);
+        defer listener.deinit(self.io);
+        const bridge_address = try std.fmt.allocPrint(self.allocator, "http://127.0.0.1:{d}", .{listener.port});
+        defer self.allocator.free(bridge_address);
+        const health = try jsonOwned(self.allocator, .{
+            .ok = true,
+            .service = "jevx-local-bridge",
+            .version = root.version,
+            .scope = "typed-decisions-only",
+            .port = listener.port,
+        });
+        defer self.allocator.free(health);
+        if (self.json) {
+            try self.emitter.emit(.service_ready, .{
+                .listening = true,
+                .address = bridge_address,
+                .scope = "typed-decisions-only",
+                .port = listener.port,
+                .pairing_token = &pairing_token,
+            });
+        } else {
+            try self.stdout.print("jevx browser bridge listening on {s}\n", .{bridge_address});
+            try self.stdout.print("Pairing token: {s}\n", .{&pairing_token});
+            try self.stdout.print("Open live playground: https://supratimsircar05.github.io/jev-zig-cli/#port={d}&pairing={s}\n", .{ listener.port, &pairing_token });
+            try self.stdout.writeAll("Only typed Jev decisions are exposed; Codex execution and credentials are not available over HTTP.\n");
+            try self.stdout.flush();
+        }
+        try web_bridge.serve(self.allocator, self.io, &listener, .{
+            .port = listener.port,
+            .health_json = health,
+            .pairing_token = &pairing_token,
+        }, .{
+            .context = self,
+            .decide = Runtime.browserDecision,
+        });
+        return exit_codes.success;
+    }
+
+    fn browserDecision(raw_context: *anyopaque, allocator: std.mem.Allocator, prompt: []const u8, requested_policy: []const u8) ![]u8 {
+        const self: *Runtime = @ptrCast(@alignCast(raw_context));
+        const requested = parseBrowserPolicy(requested_policy) orelse return error.InvalidConfig;
+        const effective_policy = policy.tighten(self.config.policy_name, requested);
+
+        if (policy.guardText(prompt)) |guard_reason| {
+            return jsonOwned(allocator, .{
+                .ok = true,
+                .mode = "live-local",
+                .source = "deterministic-guard",
+                .action = "hard-deny",
+                .disposition = "deny",
+                .reason = @tagName(guard_reason),
+                .policy = @tagName(effective_policy),
+            });
+        }
+
+        const safe_prompt = try redact.redact(self.allocator, prompt);
+        defer self.allocator.free(safe_prompt);
+        const request = try preflight.build(self.allocator, safe_prompt, self.workspace, null);
+        defer self.allocator.free(request);
+        const response = try self.invokeJevWithTimeout(request, web_jev_watchdog_ms);
+        defer self.allocator.free(response);
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const parsed = try preflight.parseLeaky(arena.allocator(), response);
+        const assessment = parsed.assessment;
+        // The playground never performs the classified action. Surface cases
+        // that need a human as `require_confirmation` instead of converting
+        // them into a non-interactive denial.
+        const evaluation = policy.evaluate(effective_policy, assessment, true);
+
+        return jsonOwned(allocator, .{
+            .ok = true,
+            .mode = "live-local",
+            .source = "jev",
+            .action = @tagName(assessment.action),
+            .route_confidence = assessment.route_confidence,
+            .impact = .{
+                .score = assessment.impact_score,
+                .confidence = assessment.impact_confidence,
+            },
+            .hazards = .{
+                .destructive = assessment.destructive,
+                .credential_sensitive = assessment.credential_sensitive,
+                .external_side_effect = assessment.external_side_effect,
+                .outside_workspace = assessment.outside_workspace,
+                .underspecified = assessment.underspecified,
+            },
+            .disposition = @tagName(evaluation.disposition),
+            .reason = @tagName(evaluation.reason),
+            .policy = @tagName(effective_policy),
+            .jev_model = parsed.resolved_model,
+        });
     }
 
     fn auditCommand(self: *Runtime, action: cli.AuditAction, yes: bool) !u8 {
@@ -705,6 +808,10 @@ const Runtime = struct {
     }
 
     fn invokeJev(self: *Runtime, request: []const u8) ![]u8 {
+        return self.invokeJevWithTimeout(request, jev_process_watchdog_ms);
+    }
+
+    fn invokeJevWithTimeout(self: *Runtime, request: []const u8, timeout_ms: u64) ![]u8 {
         var capture: JsonCapture = .{ .allocator = self.allocator };
         errdefer capture.deinit();
         var environment = try jevEnvironment(self.allocator, self.environ);
@@ -721,7 +828,7 @@ const Runtime = struct {
                 .max_stderr_bytes = 64 * 1024,
                 .max_stderr_capture_bytes = 4096,
                 .max_events = 1,
-                .timeout_ms = jev_process_watchdog_ms,
+                .timeout_ms = timeout_ms,
             },
             .sink = .{ .context = &capture, .on_event = JsonCapture.receive },
         });
@@ -879,7 +986,7 @@ fn readOptionalLayer(allocator: std.mem.Allocator, io: std.Io, path: []const u8)
     return config.parseLayerLeaky(allocator, bytes);
 }
 
-fn canonicalWorkspace(allocator: std.mem.Allocator, io: std.Io, environ: *const std.process.Environ.Map, requested: ?[]const u8) ![]u8 {
+fn canonicalWorkspace(allocator: std.mem.Allocator, io: std.Io, environ: *const std.process.Environ.Map, requested: ?[]const u8, enforce_narrow: bool) ![]u8 {
     const owned_canonical = if (requested) |path| blk: {
         var dir = try std.Io.Dir.cwd().openDir(io, path, .{});
         defer dir.close(io);
@@ -893,8 +1000,15 @@ fn canonicalWorkspace(allocator: std.mem.Allocator, io: std.Io, environ: *const 
     };
     errdefer allocator.free(owned_canonical);
     const canonical: []const u8 = owned_canonical;
-    if (workspaceTooBroad(canonical, environ)) return error.WorkspaceTooBroad;
+    if (enforce_narrow and workspaceTooBroad(canonical, environ)) return error.WorkspaceTooBroad;
     return owned_canonical;
+}
+
+fn commandNeedsNarrowWorkspace(command: cli.Command) bool {
+    return switch (command) {
+        .repl, .run, .resume_ => true,
+        else => false,
+    };
 }
 
 fn workspaceTooBroad(path: []const u8, environ: *const std.process.Environ.Map) bool {
@@ -966,19 +1080,10 @@ fn readFileBounded(allocator: std.mem.Allocator, io: std.Io, path: []const u8, l
 }
 
 fn safeCodexEnvironment(allocator: std.mem.Allocator, source: *const std.process.Environ.Map) !std.process.Environ.Map {
-    var result = std.process.Environ.Map.init(allocator);
-    errdefer result.deinit();
-    const names = [_][]const u8{
-        "PATH",    "HOME",       "USER",            "LOGNAME",        "SHELL",          "TMPDIR",       "TMP",     "TEMP",        "TERM",       "COLORTERM",
-        "LANG",    "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "LOCALAPPDATA", "APPDATA", "USERPROFILE", "SystemRoot", "ComSpec",
-        "PATHEXT",
-    };
-    for (names) |name| if (source.get(name)) |value| try result.put(name, value);
-    var iterator = source.iterator();
-    while (iterator.next()) |entry| {
-        if (std.mem.startsWith(u8, entry.key_ptr.*, "LC_")) try result.put(entry.key_ptr.*, entry.value_ptr.*);
-    }
-    return result;
+    // Use the shared child-process allowlist so managed installations retain
+    // non-secret trust-store settings without inheriting API keys, cloud
+    // credentials, proxy credentials, or arbitrary application state.
+    return process_runner.sanitizeEnvironment(allocator, source);
 }
 
 fn jevEnvironment(allocator: std.mem.Allocator, source: *const std.process.Environ.Map) !std.process.Environ.Map {
@@ -1208,6 +1313,13 @@ fn mark(ok: bool) []const u8 {
     return if (ok) "ok" else "failed";
 }
 
+fn parseBrowserPolicy(value: []const u8) ?cli.PolicyName {
+    if (std.mem.eql(u8, value, "aggressive")) return .aggressive;
+    if (std.mem.eql(u8, value, "balanced")) return .balanced;
+    if (std.mem.eql(u8, value, "conservative")) return .conservative;
+    return null;
+}
+
 fn printHelp(writer: *std.Io.Writer) !void {
     try writer.writeAll(
         \\jevx - unofficial Jev-powered Zig terminal agent
@@ -1217,6 +1329,7 @@ fn printHelp(writer: *std.Io.Writer) !void {
         \\  jevx run                     Run one prompt from stdin
         \\  jevx resume THREAD_ID        Resume a Codex thread with a prompt from stdin
         \\  jevx decide                  Send one typed Jev request from stdin
+        \\  jevx web                     Start the loopback-only browser decision bridge
         \\  jevx doctor                  Check dependencies, auth, and audit integrity
         \\  jevx policy explain          Show effective policy and immutable guards
         \\  jevx audit show|verify|export|purge
@@ -1243,11 +1356,13 @@ test "safe Codex environment omits credential-shaped variables" {
     defer source.deinit();
     try source.put("PATH", "/bin");
     try source.put("HOME", "/home/test");
+    try source.put("SSL_CERT_FILE", "/etc/company-ca.pem");
     try source.put("OPENROUTER_API_KEY", "must-not-leak");
     try source.put("AWS_SECRET_ACCESS_KEY", "must-not-leak");
     var safe = try safeCodexEnvironment(std.testing.allocator, &source);
     defer safe.deinit();
     try std.testing.expectEqualStrings("/bin", safe.get("PATH").?);
+    try std.testing.expectEqualStrings("/etc/company-ca.pem", safe.get("SSL_CERT_FILE").?);
     try std.testing.expect(safe.get("OPENROUTER_API_KEY") == null);
     try std.testing.expect(safe.get("AWS_SECRET_ACCESS_KEY") == null);
 }
@@ -1274,6 +1389,16 @@ test "workspace guard rejects POSIX Windows and home roots" {
     try std.testing.expect(workspaceTooBroad("c:/users/example/", &environment));
     try std.testing.expect(!workspaceTooBroad("/Users/example/project", &environment));
     try std.testing.expect(!workspaceTooBroad("C:\\Users\\Example\\project", &environment));
+}
+
+test "only Codex execution commands require a narrow workspace" {
+    try std.testing.expect(commandNeedsNarrowWorkspace(.repl));
+    try std.testing.expect(commandNeedsNarrowWorkspace(.run));
+    try std.testing.expect(commandNeedsNarrowWorkspace(.{ .resume_ = "thread" }));
+    try std.testing.expect(!commandNeedsNarrowWorkspace(.setup));
+    try std.testing.expect(!commandNeedsNarrowWorkspace(.doctor));
+    try std.testing.expect(!commandNeedsNarrowWorkspace(.web));
+    try std.testing.expect(!commandNeedsNarrowWorkspace(.version));
 }
 
 test "stream output redacts exact prompts and credential material" {

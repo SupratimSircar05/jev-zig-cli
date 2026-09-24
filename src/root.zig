@@ -1,6 +1,6 @@
 //! Core library for the unofficial jevx terminal agent.
 
-pub const version = "0.1.0";
+pub const version = "1.0.0";
 pub const schema_version = "jevx.event.v1";
 
 pub const app = @import("app.zig");
@@ -19,6 +19,7 @@ pub const process_runner = @import("process_runner.zig");
 pub const redact = @import("redact.zig");
 pub const secret_store = @import("secret_store.zig");
 pub const state_paths = @import("state_paths.zig");
+pub const web_bridge = @import("web_bridge.zig");
 
 test {
     _ = app;
@@ -36,4 +37,5 @@ test {
     _ = redact;
     _ = secret_store;
     _ = state_paths;
+    _ = web_bridge;
 }

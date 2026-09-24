@@ -6,6 +6,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CODEX_VERSION: rust-v0.156.1
 
@@ -19,6 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
@@ -59,6 +64,7 @@ jobs:
           fi
           unexpected="$(find src tests scripts -type f 2>/dev/null | grep -Ev '\.(zig|json|jsonl|md)$' || true)"
           test -z "$unexpected" || { echo "$unexpected" >&2; exit 1; }
+          sh -n install.sh
       - name: Bounded Zig parser fuzzing
         run: zig build test -Doptimize=ReleaseSafe -j4 --fuzz=1K
 
@@ -72,32 +78,49 @@ jobs:
             zig_target: aarch64-macos
             codex_target: aarch64-apple-darwin
             codex_sha256: fea42f9625091f011e38f059da974d52e57ba31831648bb1c7f0b1a385fde547
+            binary_suffix: ''
+            include_installer: true
           - name: macos-x86_64
             zig_target: x86_64-macos
             codex_target: x86_64-apple-darwin
             codex_sha256: 618dbcd55419fa041871f777a14b107ceb3fe2d339ef81e21e6ab5374420dc71
+            binary_suffix: ''
+            include_installer: true
           - name: linux-aarch64
             zig_target: aarch64-linux-musl
             codex_target: aarch64-unknown-linux-musl
             codex_sha256: fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786
+            binary_suffix: ''
+            include_installer: true
           - name: linux-x86_64
             zig_target: x86_64-linux-musl
             codex_target: x86_64-unknown-linux-musl
             codex_sha256: 8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6
+            binary_suffix: ''
+            include_installer: true
           - name: windows-x86_64
             zig_target: x86_64-windows
             codex_target: x86_64-pc-windows-msvc
             codex_sha256: a2e017db9807e6a2269a26fea0e1d9546469cef4d472a33016bc9f3ad7d3b733
+            binary_suffix: .exe
+            include_installer: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
       - name: Build ReleaseSafe binaries
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.zig_target }} --prefix stage -j4
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.zig_target }} --prefix stage -j4
+          test -f 'stage/bin/jevx${{ matrix.binary_suffix }}'
+          test -f 'stage/bin/jev-decide${{ matrix.binary_suffix }}'
       - name: Fetch and verify official Codex package
         shell: bash
         run: |
@@ -106,13 +129,21 @@ jobs:
           echo "${{ matrix.codex_sha256 }}  codex-package.tar.gz" | sha256sum --check --strict
           mkdir -p stage/vendor/codex
           tar -xzf codex-package.tar.gz -C stage/vendor/codex
+          test -f 'stage/vendor/codex/bin/codex${{ matrix.binary_suffix }}'
+          if [[ '${{ matrix.binary_suffix }}' == '' ]]; then
+            test -x stage/vendor/codex/bin/codex
+          fi
       - name: Add licenses, SBOM, and documentation
         shell: bash
         run: |
+          set -euo pipefail
           cp LICENSE NOTICE README.md SECURITY.md THIRD_PARTY_NOTICES.md SBOM.spdx.json stage/
           cp -R docs stage/docs
           mkdir -p stage/third_party/openai-codex
           cp third_party/openai-codex/LICENSE third_party/openai-codex/NOTICE stage/third_party/openai-codex/
+          if [[ '${{ matrix.include_installer }}' == 'true' ]]; then
+            install -m 0755 install.sh stage/install.sh
+          fi
           printf '%s\n' '${{ matrix.codex_sha256 }}  codex-package-${{ matrix.codex_target }}.tar.gz' > stage/CODEX_UPSTREAM_SHA256
       - name: Archive
         shell: bash
@@ -127,7 +158,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-${{ matrix.name }}
-          path: dist/*
+          path: dist/jevx-${{ github.ref_name }}-${{ matrix.name }}.tar.gz
           if-no-files-found: error
 
   publish:
@@ -142,19 +173,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
-      - name: Source archive and checksums
+      - name: Validate release set, archive source, and write checksums
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --prefix="jev-zig-cli-${GITHUB_REF_NAME}/" -o "dist/jev-zig-cli-${GITHUB_REF_NAME}-source.tar.gz" "$GITHUB_REF_NAME"
           cp SBOM.spdx.json "dist/jevx-${GITHUB_REF_NAME}.spdx.json"
+          expected=(
+            "jevx-${GITHUB_REF_NAME}-macos-aarch64.tar.gz"
+            "jevx-${GITHUB_REF_NAME}-macos-x86_64.tar.gz"
+            "jevx-${GITHUB_REF_NAME}-linux-aarch64.tar.gz"
+            "jevx-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
+            "jevx-${GITHUB_REF_NAME}-windows-x86_64.tar.gz"
+          )
+          actual_count="$(find dist -maxdepth 1 -type f -name 'jevx-*.tar.gz' | wc -l | tr -d '[:space:]')"
+          test "$actual_count" = 5
+          for archive in "${expected[@]}"; do
+            test -f "dist/$archive"
+          done
+
+          source_archive="jevx-${GITHUB_REF_NAME}-source.tar.gz"
+          git archive --format=tar --prefix="jevx-${GITHUB_REF_NAME}-source/" "$GITHUB_SHA" \
+            | gzip -n > "dist/$source_archive"
+          test -s "dist/$source_archive"
+          total_archive_count="$(find dist -maxdepth 1 -type f -name 'jevx-*.tar.gz' | wc -l | tr -d '[:space:]')"
+          test "$total_archive_count" = 6
+
           cd dist
-          LC_ALL=C sha256sum ./*.tar.gz ./*.spdx.json | sed 's#  \./#  #' | sort -k2 > SHA256SUMS
+          LC_ALL=C sha256sum "${expected[@]}" "$source_archive" "jevx-${GITHUB_REF_NAME}.spdx.json" \
+            | sort -k2 > SHA256SUMS
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |

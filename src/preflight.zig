@@ -34,12 +34,15 @@ pub const ParseError = error{
 
 pub fn build(allocator: std.mem.Allocator, prompt: []const u8, workspace: []const u8, model: ?[]const u8) ![]u8 {
     if (prompt.len == 0 or prompt.len > max_prompt_bytes) return error.InvalidPromptSize;
+    _ = workspace;
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
 
     const state = .{
         .instruction = prompt,
-        .workspace = workspace,
+        // The provider only needs to know that a local boundary exists. The
+        // absolute path can disclose usernames, customers, or project names.
+        .workspace = "selected locally; exact path withheld",
         .boundary = "Classify requested intent only. Do not decide permissions or perform actions.",
     };
     const questions = .{
@@ -302,6 +305,13 @@ fn buildAllocationFailureCase(allocator: std.mem.Allocator) !void {
 
 test "preflight request construction is allocation-failure safe" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, buildAllocationFailureCase, .{});
+}
+
+test "preflight never sends the absolute workspace path" {
+    const request = try build(std.testing.allocator, "inspect parser behavior", "/Users/private/customer-project", null);
+    defer std.testing.allocator.free(request);
+    try std.testing.expect(std.mem.indexOf(u8, request, "/Users/private/customer-project") == null);
+    try std.testing.expect(std.mem.indexOf(u8, request, "exact path withheld") != null);
 }
 
 test "fuzz response parser never traps" {
