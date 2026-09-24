@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for required in index.html 404.html app.js styles.css favicon.svg; do
+          for required in index.html 404.html app.js styles.css favicon.svg robots.txt sitemap.xml social-preview.jpg; do
             test -s "site/$required"
           done
           node --check site/app.js

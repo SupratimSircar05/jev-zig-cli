@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://supratimsircar05.github.io/jev-zig-cli/sitemap.xml
