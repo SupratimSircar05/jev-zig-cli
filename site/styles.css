@@ -15,6 +15,10 @@
   --max: 1180px;
   --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --page-progress: 0;
+  --hero-scroll: 0px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -85,11 +89,26 @@ a {
   border-bottom: 1px solid transparent;
   background: rgba(8, 20, 17, 0.78);
   backdrop-filter: blur(18px);
-  transition: border-color 180ms ease;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  transition: border-color 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
+}
+
+.site-header::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--mint), var(--accent));
+  content: "";
+  transform: scaleX(var(--page-progress));
+  transform-origin: left;
 }
 
 .site-header.is-scrolled {
   border-color: var(--line-soft);
+  background: rgba(6, 16, 13, 0.9);
+  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.16);
 }
 
 .brand {
@@ -113,6 +132,7 @@ a {
   color: var(--accent);
   background: #0a1713;
   font-size: 0.85rem;
+  transition: border-color 350ms ease, box-shadow 350ms ease, transform 350ms var(--ease-spring);
 }
 
 .brand-mark span {
@@ -122,20 +142,47 @@ a {
 nav {
   display: flex;
   align-items: center;
-  gap: clamp(1rem, 2.5vw, 2.2rem);
+  gap: clamp(0.85rem, 1.6vw, 1.5rem);
 }
 
 nav a {
+  position: relative;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.76rem;
   letter-spacing: 0.04em;
   text-decoration: none;
   text-transform: uppercase;
+  transition: color 220ms ease;
+}
+
+nav a:not(.nav-github)::after {
+  position: absolute;
+  right: 0;
+  bottom: -0.55rem;
+  left: 0;
+  height: 1px;
+  background: var(--mint);
+  content: "";
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 360ms var(--ease-out-expo);
+}
+
+nav a:not(.nav-github):hover::after,
+nav a:not(.nav-github).is-active::after {
+  transform: scaleX(1);
+  transform-origin: left;
 }
 
 nav a:hover {
   color: var(--text);
+}
+
+.brand:hover .brand-mark {
+  border-color: #517568;
+  box-shadow: 0 0.7rem 1.8rem rgba(0, 0, 0, 0.22);
+  transform: rotate(-3deg) scale(1.05);
 }
 
 .nav-github {
@@ -153,6 +200,8 @@ footer {
 
 .hero {
   position: relative;
+  --hero-pointer-x: 0px;
+  --hero-pointer-y: 0px;
   min-height: calc(100vh - 4.75rem);
   padding: clamp(5rem, 11vh, 8rem) 0 4rem;
   overflow: hidden;
@@ -169,6 +218,30 @@ footer {
   border-radius: 50%;
   background: radial-gradient(circle, rgba(114, 226, 178, 0.08), transparent 66%);
   box-shadow: 0 0 0 6rem rgba(114, 226, 178, 0.015), 0 0 0 12rem rgba(114, 226, 178, 0.01);
+  transform: translate3d(var(--hero-pointer-x), calc(var(--hero-pointer-y) + var(--hero-scroll)), 0);
+  transition: transform 900ms var(--ease-out-expo);
+  will-change: transform;
+}
+
+.hero-glow::before,
+.hero-glow::after {
+  position: absolute;
+  border: 1px solid rgba(255, 192, 141, 0.12);
+  border-radius: 50%;
+  content: "";
+  inset: 14%;
+}
+
+.hero-glow::before {
+  border-right-color: rgba(255, 155, 81, 0.48);
+  border-bottom-color: rgba(114, 226, 178, 0.32);
+  animation: orbit-drift 24s linear infinite;
+}
+
+.hero-glow::after {
+  border-top-color: rgba(114, 226, 178, 0.42);
+  inset: 31%;
+  animation: orbit-drift 18s linear infinite reverse;
 }
 
 .eyebrow,
@@ -211,8 +284,15 @@ h1 {
 }
 
 h1 em {
+  background: linear-gradient(100deg, var(--accent) 20%, #ffd2ad 44%, var(--mint) 51%, var(--accent) 64%);
+  background-position: 100% 50%;
+  background-size: 260% 100%;
   color: var(--accent);
   font-style: normal;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: title-sheen 1.4s 900ms var(--ease-out-expo) both;
 }
 
 .hero-copy {
@@ -250,11 +330,16 @@ code {
   font-size: 0.82rem;
   font-weight: 700;
   text-decoration: none;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  transition: transform 380ms var(--ease-spring), background 220ms ease, border-color 220ms ease, box-shadow 380ms ease;
 }
 
 .button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.012);
+}
+
+.button:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .button-primary {
@@ -266,6 +351,7 @@ code {
 .button-primary:hover {
   border-color: var(--accent-light);
   background: var(--accent-light);
+  box-shadow: 0 0.8rem 2rem rgba(255, 155, 81, 0.2);
 }
 
 .button-quiet {
@@ -469,6 +555,10 @@ code {
   background: rgba(38, 113, 83, 0.18);
 }
 
+.connection-state.is-live .status-dot {
+  animation: status-breathe 2.6s ease-in-out infinite;
+}
+
 .status-dot {
   width: 0.48rem;
   height: 0.48rem;
@@ -488,6 +578,15 @@ code {
   border-radius: 0.55rem;
   background: #06100d;
   box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.28);
+  transition: border-color 450ms ease, box-shadow 600ms var(--ease-out-expo), transform 600ms var(--ease-out-expo);
+}
+
+.terminal-shell:hover,
+.terminal-shell:focus-within {
+  --surface-lift: -3px;
+  border-color: #4f7667;
+  box-shadow: 0 2.6rem 7rem rgba(0, 0, 0, 0.36), 0 0 0 1px rgba(114, 226, 178, 0.06);
+  transform: translateY(-3px);
 }
 
 .terminal-bar {
@@ -729,6 +828,7 @@ pre {
   border-radius: 0.35rem;
   background: var(--surface);
   text-align: center;
+  transition: border-color 350ms ease, background-color 350ms ease, box-shadow 450ms ease, transform 450ms var(--ease-spring);
 }
 
 .flow-step span,
@@ -754,6 +854,17 @@ pre {
   color: var(--accent-light);
 }
 
+.flow-step:hover {
+  --surface-lift: -4px;
+  border-color: #4c6e60;
+  box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.16);
+  transform: translateY(-4px);
+}
+
+.flow-step.flow-accent:hover {
+  border-color: var(--accent);
+}
+
 .flow-arrow {
   align-self: center;
   padding: 0 0.4rem;
@@ -776,6 +887,23 @@ pre {
 .command-grid article {
   padding: 1.7rem;
   background: var(--surface);
+}
+
+.signal-grid article,
+.principles-grid article,
+.command-grid article,
+.bridge-help {
+  transition: background-color 350ms ease, box-shadow 450ms ease, transform 450ms var(--ease-spring);
+}
+
+.signal-grid article:hover,
+.principles-grid article:hover,
+.command-grid article:hover,
+.bridge-help:hover {
+  --surface-lift: -5px;
+  background-color: #10251f;
+  box-shadow: 0 1.4rem 3.5rem rgba(0, 0, 0, 0.15);
+  transform: translateY(-5px);
 }
 
 .mono-kicker {
@@ -921,6 +1049,117 @@ footer > div a {
   transform: translateY(0);
 }
 
+.motion-surface {
+  position: relative;
+  --surface-lift: 0px;
+  isolation: isolate;
+}
+
+.motion-surface::before {
+  position: absolute;
+  z-index: 0;
+  background: radial-gradient(26rem circle at var(--spotlight-x, 50%) var(--spotlight-y, 50%), rgba(114, 226, 178, 0.09), rgba(255, 155, 81, 0.025) 38%, transparent 68%);
+  content: "";
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 450ms ease;
+}
+
+.motion-surface.is-pointer-active::before {
+  opacity: 1;
+}
+
+.motion-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes orbit-drift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes title-sheen {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes status-breathe {
+  50% {
+    box-shadow: 0 0 0 0.35rem rgba(114, 226, 178, 0.08), 0 0 1.1rem rgba(114, 226, 178, 0.9);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.motion-ready .hero > .eyebrow,
+  html.motion-ready .hero > h1,
+  html.motion-ready .hero > .hero-copy,
+  html.motion-ready .hero > .hero-actions,
+  html.motion-ready .hero > .unofficial-note,
+  html.motion-ready .hero .signal-grid article {
+    opacity: 0;
+    transform: translate3d(0, 1.5rem, 0);
+    transition: opacity 850ms var(--ease-out-expo), transform 850ms var(--ease-out-expo);
+  }
+
+  html.motion-ready.motion-loaded .hero > .eyebrow,
+  html.motion-ready.motion-loaded .hero > h1,
+  html.motion-ready.motion-loaded .hero > .hero-copy,
+  html.motion-ready.motion-loaded .hero > .hero-actions,
+  html.motion-ready.motion-loaded .hero > .unofficial-note,
+  html.motion-ready.motion-loaded .hero .signal-grid article {
+    opacity: 1;
+    transform: translate3d(0, var(--surface-lift, 0px), 0);
+  }
+
+  html.motion-ready.motion-loaded .hero > h1 {
+    transition-delay: 80ms;
+  }
+
+  html.motion-ready.motion-loaded .hero > .hero-copy {
+    transition-delay: 150ms;
+  }
+
+  html.motion-ready.motion-loaded .hero > .hero-actions {
+    transition-delay: 220ms;
+  }
+
+  html.motion-ready.motion-loaded .hero > .unofficial-note {
+    transition-delay: 280ms;
+  }
+
+  html.motion-ready.motion-loaded .hero .signal-grid article:nth-child(1) {
+    transition-delay: 340ms;
+  }
+
+  html.motion-ready.motion-loaded .hero .signal-grid article:nth-child(2) {
+    transition-delay: 410ms;
+  }
+
+  html.motion-ready.motion-loaded .hero .signal-grid article:nth-child(3) {
+    transition-delay: 480ms;
+  }
+
+  html.motion-ready [data-motion-reveal] {
+    opacity: 0;
+    transform: translate3d(0, 2rem, 0) scale(0.985);
+    transition: opacity 800ms var(--ease-out-expo) var(--reveal-delay, 0ms), transform 800ms var(--ease-out-expo) var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+
+  html.motion-ready [data-motion-reveal].is-revealed {
+    opacity: 1;
+    transform: translate3d(0, var(--surface-lift, 0px), 0) scale(1);
+    will-change: auto;
+  }
+}
+
 @media (max-width: 900px) {
   nav a:not(.nav-github) {
     display: none;
@@ -1059,6 +1298,30 @@ footer > div a {
   *::before,
   *::after {
     scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  html.motion-ready [data-motion-reveal],
+  html.motion-ready .hero > *,
+  html.motion-paused [data-motion-reveal],
+  html.motion-paused .hero > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .hero-glow,
+  .terminal-shell:hover,
+  .terminal-shell:focus-within,
+  .flow-step:hover,
+  .signal-grid article:hover,
+  .principles-grid article:hover,
+  .command-grid article:hover,
+  .bridge-help:hover,
+  .button:hover,
+  .button:active,
+  .brand:hover .brand-mark {
+    transform: none !important;
   }
 }

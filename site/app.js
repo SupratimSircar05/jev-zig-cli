@@ -30,6 +30,11 @@ const elements = {
   header: document.querySelector("[data-header]"),
 };
 
+const motionPreferences = {
+  reduced: window.matchMedia("(prefers-reduced-motion: reduce)"),
+  finePointer: window.matchMedia("(hover: hover) and (pointer: fine)"),
+};
+
 function setText(element, value) {
   if (element) element.textContent = value;
 }
@@ -296,9 +301,189 @@ elements.prompt?.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") runDecision();
 });
 
-window.addEventListener("scroll", () => {
+let scrollFrame = 0;
+function syncScrollEffects() {
+  scrollFrame = 0;
   elements.header?.classList.toggle("is-scrolled", window.scrollY > 12);
-}, { passive: true });
+
+  const scrollRange = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+  const progress = Math.min(Math.max(window.scrollY / scrollRange, 0), 1);
+  document.documentElement.style.setProperty("--page-progress", progress.toFixed(4));
+  document.documentElement.style.setProperty(
+    "--hero-scroll",
+    motionPreferences.reduced.matches ? "0px" : `${Math.min(window.scrollY * 0.1, 88).toFixed(1)}px`,
+  );
+}
+
+function scheduleScrollEffects() {
+  if (scrollFrame) return;
+  scrollFrame = window.requestAnimationFrame(syncScrollEffects);
+}
+
+function prepareRevealGroup(elementsToReveal, step = 70) {
+  elementsToReveal.forEach((element, index) => {
+    element.dataset.motionReveal = "";
+    element.style.setProperty("--reveal-delay", `${Math.min(index * step, 280)}ms`);
+  });
+}
+
+function setupScrollReveals() {
+  const groups = [
+    document.querySelectorAll("#install > .section-label, #install > .section-heading, #install > .command-box, #install > .platform-row, #install > .install-detail, #install > .inline-links"),
+    document.querySelectorAll("#playground > .section-label, #playground > .section-heading, #playground > .terminal-shell, #playground > .bridge-help"),
+    document.querySelectorAll("#architecture > .section-label, #architecture > .section-heading"),
+    document.querySelectorAll("#architecture .flow > *, #architecture .principles-grid > article"),
+    document.querySelectorAll("#safety > .section-label, #safety .section-heading, #safety .guard-list > li"),
+    document.querySelectorAll("#commands > .section-label, #commands > .section-heading, #commands .command-grid > article"),
+    document.querySelectorAll(".closing > *, footer > *"),
+  ];
+
+  groups.forEach((group) => prepareRevealGroup(group));
+  const revealTargets = document.querySelectorAll("[data-motion-reveal]");
+
+  if (motionPreferences.reduced.matches || !("IntersectionObserver" in window)) {
+    revealTargets.forEach((element) => element.classList.add("is-revealed"));
+    return;
+  }
+
+  document.documentElement.classList.add("motion-ready");
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-revealed");
+      observer.unobserve(entry.target);
+    });
+  }, {
+    rootMargin: "0px 0px -8% 0px",
+    threshold: 0.08,
+  });
+
+  revealTargets.forEach((element) => observer.observe(element));
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => document.documentElement.classList.add("motion-loaded"));
+  });
+}
+
+function setupHeroDepth() {
+  const hero = document.querySelector(".hero");
+  if (!hero || !motionPreferences.finePointer.matches) return;
+
+  let pointerFrame = 0;
+  let clientX = 0;
+  let clientY = 0;
+  let pointerX = 0;
+  let pointerY = 0;
+  const renderPointer = () => {
+    pointerFrame = 0;
+    const bounds = hero.getBoundingClientRect();
+    pointerX = ((clientX - bounds.left) / bounds.width - 0.5) * 24;
+    pointerY = ((clientY - bounds.top) / bounds.height - 0.5) * 18;
+    hero.style.setProperty("--hero-pointer-x", `${pointerX.toFixed(1)}px`);
+    hero.style.setProperty("--hero-pointer-y", `${pointerY.toFixed(1)}px`);
+  };
+
+  hero.addEventListener("pointermove", (event) => {
+    if (motionPreferences.reduced.matches) return;
+    clientX = event.clientX;
+    clientY = event.clientY;
+    if (!pointerFrame) pointerFrame = window.requestAnimationFrame(renderPointer);
+  }, { passive: true });
+
+  hero.addEventListener("pointerleave", () => {
+    if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    hero.style.setProperty("--hero-pointer-x", "0px");
+    hero.style.setProperty("--hero-pointer-y", "0px");
+  }, { passive: true });
+}
+
+function setupSurfaceHighlights() {
+  const surfaces = document.querySelectorAll([
+    ".signal-grid article",
+    ".command-box",
+    ".terminal-shell",
+    ".bridge-help",
+    ".flow-step",
+    ".principles-grid article",
+    ".command-grid article",
+  ].join(","));
+
+  surfaces.forEach((surface) => {
+    surface.classList.add("motion-surface");
+    if (!motionPreferences.finePointer.matches) return;
+
+    let highlightFrame = 0;
+    let clientX = 0;
+    let clientY = 0;
+    const renderHighlight = () => {
+      highlightFrame = 0;
+      const bounds = surface.getBoundingClientRect();
+      surface.style.setProperty("--spotlight-x", `${clientX - bounds.left}px`);
+      surface.style.setProperty("--spotlight-y", `${clientY - bounds.top}px`);
+      surface.classList.add("is-pointer-active");
+    };
+
+    surface.addEventListener("pointermove", (event) => {
+      if (motionPreferences.reduced.matches) return;
+      clientX = event.clientX;
+      clientY = event.clientY;
+      if (!highlightFrame) highlightFrame = window.requestAnimationFrame(renderHighlight);
+    }, { passive: true });
+
+    surface.addEventListener("pointerleave", () => {
+      if (highlightFrame) window.cancelAnimationFrame(highlightFrame);
+      highlightFrame = 0;
+      surface.classList.remove("is-pointer-active");
+    }, { passive: true });
+  });
+}
+
+function setupActiveNavigation() {
+  if (!("IntersectionObserver" in window)) return;
+  const links = new Map();
+  document.querySelectorAll('nav a[href^="#"]').forEach((link) => {
+    links.set(link.getAttribute("href")?.slice(1), link);
+  });
+  const sections = Array.from(links.keys())
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+  if (!sections.length) return;
+
+  const visible = new Map();
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) visible.set(entry.target.id, entry.intersectionRatio);
+      else visible.delete(entry.target.id);
+    });
+    const active = Array.from(visible.entries()).sort((left, right) => right[1] - left[1])[0]?.[0];
+    links.forEach((link, id) => {
+      const isActive = id === active;
+      link.classList.toggle("is-active", isActive);
+      if (isActive) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  }, {
+    rootMargin: "-22% 0px -58% 0px",
+    threshold: [0, 0.15, 0.35, 0.6],
+  });
+  sections.forEach((section) => observer.observe(section));
+}
+
+function setupMotion() {
+  setupScrollReveals();
+  setupHeroDepth();
+  setupSurfaceHighlights();
+  setupActiveNavigation();
+  syncScrollEffects();
+
+  window.addEventListener("scroll", scheduleScrollEffects, { passive: true });
+  window.addEventListener("resize", scheduleScrollEffects, { passive: true });
+  motionPreferences.reduced.addEventListener("change", (event) => {
+    document.documentElement.classList.toggle("motion-paused", event.matches);
+    if (!event.matches) document.documentElement.classList.add("motion-loaded");
+    scheduleScrollEffects();
+  });
+}
 
 function consumePairingFragment() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -331,3 +516,4 @@ window.addEventListener("pagehide", () => {
 renderResult(deterministicDemo(elements.prompt.value, elements.policy.value));
 consumePairingFragment();
 checkBridge();
+setupMotion();
