@@ -504,7 +504,7 @@ test "runner sends input only over stdin and isolates hostile stderr" {
         .argv = &.{
             "/bin/sh",
             "-c",
-            "IFS= read -r line; [ \"$line\" = 'sensitive prompt' ] || exit 9; printf '{\\\"type\\\":\\\"ok\\\"}\\n'; printf 'stderr-is-not-json' >&2",
+            "IFS= read -r line; [ \"$line\" = 'sensitive prompt' ] || exit 9; printf '%s\\n' '{\"type\":\"ok\"}'; printf 'stderr-is-not-json' >&2",
         },
         .stdin_data = "sensitive prompt\n",
         .limits = .{ .max_stderr_capture_bytes = 7 },
@@ -546,7 +546,7 @@ test "child environment retains Codex paths and strips credential sentinels" {
         .argv = &.{
             "/bin/sh",
             "-c",
-            "if [ -z \"${OPENROUTER_API_KEY+x}\" ] && [ \"$CODEX_HOME\" = /safe/codex ]; then printf '{\\\"type\\\":\\\"clean\\\"}\\n'; else printf '{\\\"type\\\":\\\"leak\\\"}\\n'; fi",
+            "if [ -z \"${OPENROUTER_API_KEY+x}\" ] && [ \"$CODEX_HOME\" = /safe/codex ]; then printf '%s\\n' '{\"type\":\"clean\"}'; else printf '%s\\n' '{\"type\":\"leak\"}'; fi",
         },
         .environ_map = &source,
         .sink = collector.sink(),
