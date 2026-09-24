@@ -1,0 +1,9 @@
+/.zig-cache/
+/zig-out/
+/.cache/
+/work/
+/work-jevx
+*.journal
+*.key
+*.tmp
+/.env

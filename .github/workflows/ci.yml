@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: ${{ matrix.os }} / Zig 0.16.0
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - name: Format check
+        run: zig fmt --check build.zig src
+      - name: Unit and contract tests
+        run: zig build test -j4
+      - name: ReleaseSafe build
+        run: zig build -Doptimize=ReleaseSafe -j4
+      - name: Artifact smoke test
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ci-placeholder-not-a-credential
+        run: |
+          ./zig-out/bin/jevx version
+          ./zig-out/bin/jevx policy explain --json
+          ./zig-out/bin/jev-decide --health
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        target:
+          - aarch64-macos
+          - x86_64-macos
+          - aarch64-linux-musl
+          - x86_64-linux-musl
+          - x86_64-windows
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }} -j4
+
+  parser-fuzz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - name: Bounded parser fuzzing
+        shell: bash
+        run: |
+          # --fuzz is a Zig build-runner option. ReleaseSafe avoids a known
+          # Debug-only compiler test-runner issue in Zig 0.16.0.
+          zig build test -Doptimize=ReleaseSafe -j4 --fuzz=1K
+
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Reject credential-shaped material
+        shell: bash
+        run: |
+          if git grep -I -n -E '(sk-or-v1-[A-Za-z0-9_-]{24,}|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{24,})' -- . ':!src/redact.zig' ':!tests'; then
+            echo 'credential-shaped material found in repository'
+            exit 1
+          fi
+      - name: No non-Zig project source
+        shell: bash
+        run: |
+          unexpected=$(find src tests scripts -type f 2>/dev/null | grep -Ev '\.(zig|json|jsonl|md)$' || true)
+          test -z "$unexpected" || { echo "$unexpected"; exit 1; }

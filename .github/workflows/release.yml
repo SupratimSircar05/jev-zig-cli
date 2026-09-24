@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+env:
+  CODEX_VERSION: rust-v0.156.1
+
+jobs:
+  verify:
+    name: Verify tagged source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - name: Verify tag and embedded versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must be vMAJOR.MINOR.PATCH, got: $tag" >&2
+            exit 1
+          fi
+          version="${tag#v}"
+          source_version="$(sed -n 's/^pub const version = "\([^"]*\)";/\1/p' src/root.zig)"
+          zon_version="$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)",/\1/p' build.zig.zon)"
+          sbom_version="$(jq -r '.packages[] | select(.SPDXID == "SPDXRef-Package-jevx") | .versionInfo' SBOM.spdx.json)"
+          test "$source_version" = "$version"
+          test "$zon_version" = "$version"
+          test "$sbom_version" = "$version"
+          jq -e --arg version "$version" '.name == ("jev-zig-cli-" + $version)' SBOM.spdx.json >/dev/null
+          test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA"
+      - name: Format, tests, and ReleaseSafe build
+        run: |
+          zig fmt --check build.zig src policy
+          zig build test -Doptimize=ReleaseSafe -j4
+          zig build -Doptimize=ReleaseSafe -j4
+          ./zig-out/bin/jevx version | grep -F "jevx ${GITHUB_REF_NAME#v}"
+      - name: Validate policy corpus and repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r line || test -n "$line"; do
+            test -z "$line" || jq -e 'type == "object" and (.id | type == "string") and (.label | type == "string") and (.action | type == "string") and (.prompt | type == "string")' <<<"$line" >/dev/null
+          done < policy/corpus.jsonl
+          if git grep -I -n -E '(sk-or-v1-[A-Za-z0-9_-]{24,}|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{24,})' -- . ':!src/redact.zig' ':!tests'; then
+            echo 'credential-shaped material found in repository' >&2
+            exit 1
+          fi
+          unexpected="$(find src tests scripts -type f 2>/dev/null | grep -Ev '\.(zig|json|jsonl|md)$' || true)"
+          test -z "$unexpected" || { echo "$unexpected" >&2; exit 1; }
+      - name: Bounded Zig parser fuzzing
+        run: zig build test -Doptimize=ReleaseSafe -j4 --fuzz=1K
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            zig_target: aarch64-macos
+            codex_target: aarch64-apple-darwin
+            codex_sha256: fea42f9625091f011e38f059da974d52e57ba31831648bb1c7f0b1a385fde547
+          - name: macos-x86_64
+            zig_target: x86_64-macos
+            codex_target: x86_64-apple-darwin
+            codex_sha256: 618dbcd55419fa041871f777a14b107ceb3fe2d339ef81e21e6ab5374420dc71
+          - name: linux-aarch64
+            zig_target: aarch64-linux-musl
+            codex_target: aarch64-unknown-linux-musl
+            codex_sha256: fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786
+          - name: linux-x86_64
+            zig_target: x86_64-linux-musl
+            codex_target: x86_64-unknown-linux-musl
+            codex_sha256: 8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6
+          - name: windows-x86_64
+            zig_target: x86_64-windows
+            codex_target: x86_64-pc-windows-msvc
+            codex_sha256: a2e017db9807e6a2269a26fea0e1d9546469cef4d472a33016bc9f3ad7d3b733
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+      - name: Build ReleaseSafe binaries
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.zig_target }} --prefix stage -j4
+      - name: Fetch and verify official Codex package
+        shell: bash
+        run: |
+          url="https://github.com/openai/codex/releases/download/${CODEX_VERSION}/codex-package-${{ matrix.codex_target }}.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 "$url" -o codex-package.tar.gz
+          echo "${{ matrix.codex_sha256 }}  codex-package.tar.gz" | sha256sum --check --strict
+          mkdir -p stage/vendor/codex
+          tar -xzf codex-package.tar.gz -C stage/vendor/codex
+      - name: Add licenses, SBOM, and documentation
+        shell: bash
+        run: |
+          cp LICENSE NOTICE README.md SECURITY.md THIRD_PARTY_NOTICES.md SBOM.spdx.json stage/
+          cp -R docs stage/docs
+          mkdir -p stage/third_party/openai-codex
+          cp third_party/openai-codex/LICENSE third_party/openai-codex/NOTICE stage/third_party/openai-codex/
+          printf '%s\n' '${{ matrix.codex_sha256 }}  codex-package-${{ matrix.codex_target }}.tar.gz' > stage/CODEX_UPSTREAM_SHA256
+      - name: Archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mv stage "jevx-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          source_date_epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --mtime="@${source_date_epoch}" --owner=0 --group=0 --numeric-owner \
+            -cf - "jevx-${GITHUB_REF_NAME}-${{ matrix.name }}" \
+            | gzip -n > "dist/jevx-${GITHUB_REF_NAME}-${{ matrix.name }}.tar.gz"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Source archive and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --prefix="jev-zig-cli-${GITHUB_REF_NAME}/" -o "dist/jev-zig-cli-${GITHUB_REF_NAME}-source.tar.gz" "$GITHUB_REF_NAME"
+          cp SBOM.spdx.json "dist/jevx-${GITHUB_REF_NAME}.spdx.json"
+          cd dist
+          LC_ALL=C sha256sum ./*.tar.gz ./*.spdx.json | sed 's#  \./#  #' | sort -k2 > SHA256SUMS
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.spdx.json
+            dist/SHA256SUMS
+      - name: Create or update GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag \
+              --draft
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest

@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "jev-zig-cli-0.1.0",
+  "documentNamespace": "https://github.com/SupratimSircar05/jev-zig-cli/releases/tag/v0.1.0/sbom",
+  "creationInfo": {
+    "created": "2026-09-23T00:00:00Z",
+    "creators": ["Organization: SupratimSircar05"]
+  },
+  "packages": [
+    {
+      "name": "jev-zig-cli",
+      "SPDXID": "SPDXRef-Package-jevx",
+      "versionInfo": "0.1.0",
+      "downloadLocation": "https://github.com/SupratimSircar05/jev-zig-cli",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright 2026 Supratim Sircar"
+    },
+    {
+      "name": "openai-codex",
+      "SPDXID": "SPDXRef-Package-codex",
+      "versionInfo": "rust-v0.156.1",
+      "downloadLocation": "https://github.com/openai/codex/releases/tag/rust-v0.156.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright 2025 OpenAI"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-jevx"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-jevx",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-Package-codex"
+    }
+  ]
+}

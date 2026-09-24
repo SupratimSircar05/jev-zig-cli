@@ -1,0 +1,12 @@
+jevx - Jev-powered Zig terminal agent
+Copyright 2026 Supratim Sircar
+
+This is an independent, unofficial project. It is not endorsed by, sponsored
+by, or affiliated with OpenAI, TypeSafe, or OpenRouter. Provider names are used
+only to identify interoperable services.
+
+Binary release archives bundle an unmodified official OpenAI Codex CLI package
+version rust-v0.156.1. Codex is licensed under Apache License 2.0. Its license
+and NOTICE are reproduced under third_party/openai-codex/.
+
+Jev is a remote proprietary service and is not distributed by this project.
