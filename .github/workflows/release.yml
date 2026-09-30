@@ -47,7 +47,7 @@ jobs:
           test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA"
       - name: Format, tests, and ReleaseSafe build
         run: |
-          zig fmt --check build.zig src policy
+          zig fmt --check build.zig src tests policy
           zig build test -Doptimize=ReleaseSafe -j4
           zig build -Doptimize=ReleaseSafe -j4
           ./zig-out/bin/jevx version | grep -F "jevx ${GITHUB_REF_NAME#v}"

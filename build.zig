@@ -57,11 +57,32 @@ pub fn build(b: *std.Build) void {
     });
     const run_corpus_tests = b.addRunArtifact(corpus_tests);
 
-    const test_step = b.step("test", "Run unit and contract tests");
+    const fake_codex = b.addExecutable(.{
+        .name = "fake-codex",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/fake_codex.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const stream_redaction_integration = b.addExecutable(.{
+        .name = "stream-redaction-integration",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/stream_redaction_integration.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "jevx", .module = core }},
+        }),
+    });
+    const run_stream_redaction_integration = b.addRunArtifact(stream_redaction_integration);
+    run_stream_redaction_integration.addArtifactArg(fake_codex);
+
+    const test_step = b.step("test", "Run unit, contract, and integration tests");
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_main_tests.step);
     test_step.dependOn(&run_decide_tests.step);
     test_step.dependOn(&run_corpus_tests.step);
+    test_step.dependOn(&run_stream_redaction_integration.step);
 
     const check_step = b.step("check", "Compile both executables without installing");
     check_step.dependOn(&jevx.step);

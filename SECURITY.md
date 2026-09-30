@@ -14,6 +14,8 @@ safely; otherwise users should upgrade to the current release.
   argument, written to configuration, included in an audit record, or emitted
   in diagnostics.
 - Audit plaintext is redacted before it reaches the encrypted journal.
+- Structured backend events are redacted by field name and string content
+  before they reach JSONL output, diagnostics, or Jev postflight evidence.
 - `--dangerously-bypass-approvals-and-sandbox` and equivalent modes are never
   generated or accepted.
 

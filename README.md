@@ -60,6 +60,7 @@ Prompts and credentials are never placed in child-process arguments.
 | Typed preflight | Batches action routing, five hazard checks, and impact scoring into one validated Jev request |
 | Deterministic policy | Applies tested thresholds and immutable guards in Zig rather than delegating permissions to a model |
 | Durable audit | Redacts, encrypts, authenticates, sequences, and hash-chains journal records |
+| Key-aware output safety | Removes opaque credentials under sensitive JSON keys before events reach JSONL output or Jev postflight evidence |
 | Safe recovery | Preserves completed history after a truncated final journal frame and forbids unsafe action replay |
 | Scriptable operation | Streams versioned JSONL with stable event fields and exit classes |
 | Graceful isolation | Keeps Codex authentication, Jev credentials, agent execution, and the browser companion in separate trust boundaries |
@@ -280,7 +281,7 @@ Use exactly Zig 0.16.0:
 
 ```sh
 zig version                         # must print 0.16.0
-zig fmt --check build.zig src policy
+zig fmt --check build.zig src tests policy
 zig build test -Doptimize=ReleaseSafe -j4
 zig build -Doptimize=ReleaseSafe -j4
 ./zig-out/bin/jevx version

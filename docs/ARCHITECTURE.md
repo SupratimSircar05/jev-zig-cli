@@ -38,6 +38,13 @@ app-server mode. The production build therefore rejects that backend before
 spawning it and takes the safe pre-turn fallback; the protocol implementation
 is retained under contract tests for a future isolated release.
 
+Every streamed backend event crosses two independent redaction boundaries.
+The encrypted journal performs recursive key-aware redaction before storage.
+Before output or postflight verification, the event sanitizer replaces the
+entire value beneath credential-shaped JSON keys, scans all other strings for
+credential patterns, and removes exact prompt text. Unknown non-sensitive
+fields and their names are preserved so future Codex schemas remain usable.
+
 ## Degraded operation
 
 - Without Jev, agent turns fail closed before Codex sees the prompt. Host

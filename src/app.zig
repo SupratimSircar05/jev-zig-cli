@@ -8,6 +8,7 @@ const codex_exec = @import("codex_exec.zig");
 const config = @import("config.zig");
 const events = @import("events.zig");
 const exit_codes = @import("exit_codes.zig");
+const output_sanitizer = @import("output_sanitizer.zig");
 const policy = @import("policy.zig");
 const preflight = @import("preflight.zig");
 const process_runner = @import("process_runner.zig");
@@ -796,7 +797,7 @@ const Runtime = struct {
         }, state, sink);
         defer result.deinit(self.allocator);
         if (!result.succeeded() and result.process.stderr.bytes.len != 0) {
-            const safe = try sanitizeTextForOutput(self.allocator, result.process.stderr.bytes, stream.prompt, stream.output_prompt);
+            const safe = try output_sanitizer.sanitizeText(self.allocator, result.process.stderr.bytes, stream.prompt, stream.output_prompt);
             defer self.allocator.free(safe);
             try self.stderr.print("codex failed; redacted diagnostics: {s}\n", .{safe});
         }
@@ -873,7 +874,7 @@ const StreamContext = struct {
         const self: *StreamContext = @ptrCast(@alignCast(raw_context.?));
         _ = try self.journal.append(nowNs(self.runtime.io), self.audit_action, event.raw);
 
-        const safe = try sanitizeJsonForOutput(self.allocator, event.value.*, self.prompt, self.output_prompt);
+        const safe = try output_sanitizer.sanitizeJson(self.allocator, event.value.*, self.prompt, self.output_prompt);
         defer self.allocator.free(safe);
         try appendRecentEvidence(self.allocator, &self.transcript, safe);
 
@@ -1169,81 +1170,6 @@ fn appendRecentEvidence(allocator: std.mem.Allocator, transcript: *std.ArrayList
     try transcript.append(allocator, '\n');
 }
 
-fn sanitizeTextForOutput(
-    allocator: std.mem.Allocator,
-    input: []const u8,
-    full_prompt: []const u8,
-    user_prompt: []const u8,
-) ![]u8 {
-    var current = try redact.redactText(allocator, input);
-    errdefer {
-        std.crypto.secureZero(u8, current);
-        allocator.free(current);
-    }
-    const needles = [_][]const u8{ full_prompt, user_prompt };
-    for (needles) |needle| {
-        if (needle.len == 0 or std.mem.indexOf(u8, current, needle) == null) continue;
-        const replaced = try std.mem.replaceOwned(u8, allocator, current, needle, "[PROMPT REDACTED]");
-        std.crypto.secureZero(u8, current);
-        allocator.free(current);
-        current = replaced;
-    }
-    return current;
-}
-
-fn sanitizeJsonForOutput(
-    allocator: std.mem.Allocator,
-    value: std.json.Value,
-    full_prompt: []const u8,
-    user_prompt: []const u8,
-) ![]u8 {
-    var output: std.Io.Writer.Allocating = .init(allocator);
-    errdefer output.deinit();
-    try writeSanitizedJson(allocator, &output.writer, value, full_prompt, user_prompt);
-    return output.toOwnedSlice();
-}
-
-fn writeSanitizedJson(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    value: std.json.Value,
-    full_prompt: []const u8,
-    user_prompt: []const u8,
-) !void {
-    switch (value) {
-        .string => |text_value| {
-            const safe = try sanitizeTextForOutput(allocator, text_value, full_prompt, user_prompt);
-            defer {
-                std.crypto.secureZero(u8, safe);
-                allocator.free(safe);
-            }
-            try std.json.Stringify.value(safe, .{}, writer);
-        },
-        .array => |array| {
-            try writer.writeByte('[');
-            for (array.items, 0..) |item, index| {
-                if (index != 0) try writer.writeByte(',');
-                try writeSanitizedJson(allocator, writer, item, full_prompt, user_prompt);
-            }
-            try writer.writeByte(']');
-        },
-        .object => |object_value| {
-            try writer.writeByte('{');
-            var iterator = object_value.iterator();
-            var first = true;
-            while (iterator.next()) |entry| {
-                if (!first) try writer.writeByte(',');
-                first = false;
-                try std.json.Stringify.value(entry.key_ptr.*, .{}, writer);
-                try writer.writeByte(':');
-                try writeSanitizedJson(allocator, writer, entry.value_ptr.*, full_prompt, user_prompt);
-            }
-            try writer.writeByte('}');
-        },
-        else => try std.json.Stringify.value(value, .{}, writer),
-    }
-}
-
 fn jsonOwned(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     var output: std.Io.Writer.Allocating = .init(allocator);
     errdefer output.deinit();
@@ -1413,7 +1339,7 @@ test "stream output redacts exact prompts and credential material" {
     defer std.testing.allocator.free(raw);
     var parsed = try process_runner.parseStrict(std.testing.allocator, raw);
     defer parsed.deinit();
-    const safe = try sanitizeJsonForOutput(std.testing.allocator, parsed.value, guarded, original);
+    const safe = try output_sanitizer.sanitizeJson(std.testing.allocator, parsed.value, guarded, original);
     defer std.testing.allocator.free(safe);
     try std.testing.expect(std.mem.indexOf(u8, safe, original) == null);
     try std.testing.expect(std.mem.indexOf(u8, safe, "sk-secret") == null);

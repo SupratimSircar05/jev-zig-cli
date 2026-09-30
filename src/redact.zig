@@ -231,7 +231,10 @@ fn tokenEnd(input: []const u8, start: usize) ?usize {
     return null;
 }
 
-fn isSensitiveKey(raw: []const u8) bool {
+/// Returns true when a structured field name denotes credential material.
+/// Separators and ASCII case are ignored so future backend schemas such as
+/// `vendor_secret`, `Vendor-Secret`, and `vendor.secret` remain covered.
+pub fn isSensitiveKey(raw: []const u8) bool {
     const key = std.mem.trim(u8, raw, " \t\r\n\"'");
     const sensitive = [_][]const u8{
         "authorization",   "proxyauthorization", "cookie",             "setcookie",

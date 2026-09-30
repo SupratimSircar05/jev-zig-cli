@@ -18,7 +18,7 @@ credential isolation.
 Before opening a pull request, run:
 
 ```sh
-zig fmt --check build.zig src policy
+zig fmt --check build.zig src tests policy
 zig build test -Doptimize=ReleaseSafe -j4
 zig build -Doptimize=ReleaseSafe -j4
 sh -n install.sh

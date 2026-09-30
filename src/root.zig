@@ -13,6 +13,7 @@ pub const events = @import("events.zig");
 pub const exit_codes = @import("exit_codes.zig");
 pub const decision = @import("decision.zig");
 pub const jev_client = @import("jev_client.zig");
+pub const output_sanitizer = @import("output_sanitizer.zig");
 pub const policy = @import("policy.zig");
 pub const preflight = @import("preflight.zig");
 pub const process_runner = @import("process_runner.zig");
@@ -31,6 +32,7 @@ test {
     _ = exit_codes;
     _ = decision;
     _ = jev_client;
+    _ = output_sanitizer;
     _ = policy;
     _ = preflight;
     _ = process_runner;
